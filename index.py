@@ -60,7 +60,23 @@ options_month = sorted(options_month, key=lambda x: x['value'])
 options_team = sorted(options_team, key=lambda x: x['value'])
 
 
+def month_filter(month):
+    if month == 0:
+        mask = df['Mês'].isin(df['Mês'].unique())
+    
+    else:
+        mask = df['Mês'].isin([month])
+        
+    return mask
 
+
+def team_filter(team):
+    if team == 0:
+        mask = df['Equipe'].isin(df['Equipe'].unique())
+    else:
+        mask= df['Equipe'].isin([team])
+    
+    return mask
 
 # ========================= Layout ========================= #
 
@@ -125,7 +141,7 @@ app.layout = dbc.Container(children=[
                                 labelCheckedClassName='text-success',
                                 inputCheckedClassName='border border-success bg-success',
                             ),
-                            html.Div(id='teste',style={'text-align': 'center', 'margin-top':'10px'})
+                            html.Div(id='month_select',style={'text-align': 'center', 'margin-top':'10px'})
                         ])
                     )
                 ])
@@ -147,12 +163,14 @@ app.layout = dbc.Container(children=[
                          ])
                      ], style=tab_card)
                  ])
-             ],className='g-2 my-auto', style={'margin-top': '7px'}),
+             ]),
              
              dbc.Row([
                  dbc.Col([
                      dbc.Card([
-                        dcc.Graph(id='graph4', className='dbc', config=config_graph)
+                         dbc.CardBody([
+                             dcc.Graph(id='graph4', className='dbc', config=config_graph)
+                         ])
                      ], style=tab_card)
                  ])
              ], className='g2 my-auto', style={'margin-top': '7px'})
@@ -245,41 +263,286 @@ app.layout = dbc.Container(children=[
 ], fluid=True, style={'height': '100vh'})
 
 # ========================= Callbacks ========================= #
+#MESES
 @app.callback(
-    Output('teste','children'),
-    Input('radio-month','value')
+    Output('graph1','figure'),
+    Output('graph2','figure'),
+    Output('month_select','children'),
+    Input('radio-month','value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'),'value'),
+    
 )
-def update_div_teste(selected_month):
-    if selected_month == 1:
-        return 'Janeiro'
-    elif selected_month == 2:
-        return 'Fevereiro'
-    elif selected_month == 3:
-        return 'Março'
-    elif selected_month == 4:
-        return 'Abril'
-    elif selected_month == 5:
-        return 'Maio'
-    elif selected_month == 6:
-        return 'Junho'
-    elif selected_month == 7:
-        return 'Julho'
-    elif selected_month == 8:
-        return 'Agosto'
-    elif selected_month == 9:
-        return 'Setembro'
-    elif selected_month == 10:
-        return 'Outubro'
-    elif selected_month == 11:
-        return 'Novembro'
-    elif selected_month == 12:
-        return 'Dezembro'
-    elif selected_month == 0:
-        return 'Ano todo'
-    else:
-        return ''
+def row1(month,theme):
+    template = template_theme1 if theme else template_theme2
+    
+    mask = month_filter(month)
+    df_1 = df.loc[mask]
+    
+    #TOP VENDEDEDORES POR TIME
+    df_1 = df_1.groupby(['Equipe', 'Consultor'], as_index=False)['Valor Pago'].sum().sort_values(ascending=False, by='Valor Pago')
+    df_top_consultor_team= df_1.groupby('Equipe').head(1)
+    
+    fig_top_consultor_team = go.Figure(
+        go.Pie(labels=df_top_consultor_team["Consultor"] + ' - ' + df_top_consultor_team['Equipe'] , values=df_top_consultor_team['Valor Pago'], hole=.6)
+    )
+    fig_top_consultor_team.update_layout(main_config, height=200, template=template,legend=dict(x=1, y=1, traceorder='normal', font=dict(size=10)))
+    
+    fig_consultor_faturamento = px.bar(df_top_consultor_team, x='Consultor', y='Valor Pago', color='Equipe')
+    fig_consultor_faturamento.update_layout(main_config, height=200, template=template, showlegend=False)
+    
+    lista_mes = ['Ano todo', 'Janeiro', 'Fevereiro', 'Março', 'Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    
+    select = html.H1(lista_mes[month])
+    
+    return fig_consultor_faturamento,fig_top_consultor_team,select
+    
+@app.callback(
+    Output('graph3', 'figure'),
+    Input('radio-team', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)
+def graph3(team, theme):
+    template= template_theme1 if theme else template_theme2
+    
+    mask = team_filter(team)
+    df_team = df.loc[mask]
+    
+    df_chamada_dia=df_team.groupby('Dia', as_index=False)['Chamadas Realizadas'].sum()
+    
+    fig_chamada_dia= go.Figure(go.Scatter(
+        x=df_chamada_dia['Dia'], y=df_chamada_dia['Chamadas Realizadas'], mode='lines', fill='tonexty'
+    ))
+    
+    fig_chamada_dia.add_annotation(
+        text='Chamadas Médias por dia do Mês',
+        yref='paper',
+        xref='paper',
+        font=dict(
+            size=17,
+            color='gray'
+        ),
+        align= 'center', bgcolor='rgba(0,0,0,0.8)',
+        x=0.05, y=0.85, showarrow=False)
+    
+    fig_chamada_dia.add_annotation(
+        text=f'Média: {round(df_chamada_dia["Chamadas Realizadas"].mean(),2)}',
+        xref='paper',
+        yref='paper',
+        font=dict(
+            size=20,
+            color='gray'
+        ),
+        align='center', bgcolor='rgba(0,0,0,0.8)',
+        x=0.05, y=0.55, showarrow=False
+    )
+    
+    fig_chamada_dia.update_layout(main_config, height=180, template=template)
+    
+    return fig_chamada_dia
+       
+@app.callback(
+    Output('graph4', 'figure'),
+    Input('radio-team', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)
+def graph4(team, theme):
+    
+    template= template_theme1 if theme else template_theme2
+    
+    mask = team_filter(team)
+    df_team = df.loc[mask]
+    
+    #MÊS
+    df_chamada_mes = df_team.groupby('Mês', as_index=False)['Chamadas Realizadas'].sum()
+    
+    fig_chamada_mes= go.Figure(go.Scatter(
+        x=df_chamada_mes['Mês'], y=df_chamada_mes['Chamadas Realizadas'], mode='lines', fill='tonexty'
+    ))
+    
+    fig_chamada_mes.add_annotation(
+        text='Chamadas Médias por mês',
+        yref='paper',
+        xref='paper',
+        font=dict(
+            size=17,
+            color='gray'
+        ),
+        align= 'center', bgcolor='rgba(0,0,0,0.8)',
+        x=0.05, y=0.85, showarrow=False)
+    
+    fig_chamada_mes.add_annotation(
+        text=f'Média: {round(df_chamada_mes["Chamadas Realizadas"].mean(),2)}',
+        xref='paper',
+        yref='paper',
+        font=dict(
+            size=20,
+            color='gray'
+        ),
+        align='center', bgcolor='rgba(0,0,0,0.8)',
+        x=0.05, y=0.55, showarrow=False
+    )
+    
+    fig_chamada_mes.update_layout(main_config, height=180, template=template)
+    
+    return fig_chamada_mes  
+        
+@app.callback(
+    Output('graph5', 'figure'),
+    Output('graph6', 'figure'),
+    Input('radio-team', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)    
+def graph5_and_graph6(month,theme):
+    template = template_theme1 if theme else template_theme2
+    #month=1
+    
+    mask = month_filter(month)
+    df_5=df_6=df.loc[mask]
+    
+    df_top_consultant = df_5.groupby(['Consultor','Equipe'], as_index=False)['Valor Pago'].sum().sort_values(by='Valor Pago', ascending=False)
+    fig_top_consultant= go.Figure(
+        go.Indicator(
+            mode='number+delta',
+            title={'text':f'<span style="font-size:100%">{df_top_consultant["Consultor"].iloc[0]} - Top Consultante</span>'},
+            value=df_top_consultant['Valor Pago'].iloc[0],
+            number={'prefix':'R$'},
+            delta = {'relative':True, 'valueformat': '.1%', 'reference':df_top_consultant['Valor Pago'].mean()}
+
+        )
+    )
+    
+    fig_top_consultant.update_layout(main_config,height=200, template=template)
+    fig_top_consultant.update_layout({'margin': {'l':0,'r':0,'t':50,'b':0}})
+    
+    df_top_teams= df_6.groupby(['Equipe'],as_index=False)['Valor Pago'].sum().sort_values(by='Valor Pago',ascending=False)
+    fig_top_team = go.Figure(
+        go.Indicator(
+            mode='number+delta',
+            title={'text': f'<span style="font-size:100%">{df_top_teams["Equipe"].loc[0]} - Top Team'},
+            value=df_top_teams["Valor Pago"].loc[0],
+            number={'prefix':'R$'},
+            delta = {'relative':True, 'valueformat': '.1%', 'reference':df_top_teams['Valor Pago'].mean()}
+        )
+    )
+    
+    fig_top_team.update_layout(main_config,height=200, template=template)
+    fig_top_team.update_layout({'margin': {'l':0,'r':0,'t':50,'b':0}})
+    
+    return fig_top_consultant,fig_top_team
+    
+@app.callback(
+    Output('graph7', 'figure'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)
+def graph7(theme):
+    #theme='darkly'
+    template = template_theme1 if theme else template_theme2
+    
+    df_equipe_mes = df.groupby(['Mês','Equipe'],as_index=False)['Valor Pago'].sum()
+    df_equipe_mes_group = df.groupby('Mês',as_index=False)['Valor Pago'].sum()
+    
+    fig_equipe_mes = px.line(df_equipe_mes, y='Valor Pago', x='Mês', color='Equipe')
+    fig_equipe_mes.add_trace(go.Scatter(y=df_equipe_mes_group['Valor Pago'], x=df_equipe_mes_group['Mês'], mode='lines+markers', fill='tonexty', name='Total de vendas'))
+    
+    fig_equipe_mes.update_layout(main_config, yaxis={'title': None}, xaxis={'title': None}, height=190, template=template)
+    fig_equipe_mes.update_layout({'legend': {'yanchor': 'top', 'y':0.99, 'font' : {'color':'white', 'size':10}}})
+    
+    return fig_equipe_mes
+    
+@app.callback(
+    Output('graph8', 'figure'),
+    Input('radio-month', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)
+def graph8(month,theme):
+    template = template_theme1 if theme else template_theme2
+    month=8
+    
+    mask = month_filter(month)
+    df_8=df.loc[mask]
+    
+    df_equipe_valor_pago= df_8.groupby('Equipe', as_index=False)['Valor Pago'].sum()
+    
+    fig_equipe_valor_pago= go.Figure(go.Bar(
+        x=df_equipe_valor_pago['Valor Pago'],
+        y=df_equipe_valor_pago['Equipe'],
+        orientation='h',
+        textposition='auto',
+        text=df_equipe_valor_pago['Valor Pago'],
+        insidetextfont=dict(family='Times', size=12)
+    ))
+    
+    fig_equipe_valor_pago.update_layout(main_config, height=360, template=template)
+    
+    return fig_equipe_valor_pago
+    
+@app.callback(
+    Output('graph9', 'figure'),
+    Input('radio-month', 'value'),
+    Input('radio-month', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value'),
+)
+def graph9(month,team,theme):
+    template = template_theme1 if theme else template_theme2
+    
+    mask=month_filter(month)
+    df_9= df.loc[mask]
+    
+    mask= team_filter(team)
+    df_9= df_9.loc[mask]
+    
+    df_9=df_9.groupby('Meio de Propaganda', as_index=False)['Valor Pago'].sum()
+    
+    fig9=go.Figure()
+    fig9.add_trace(go.Pie(labels=df_9['Meio de Propaganda'], values=df_9['Valor Pago'], hole=.7))
+    
+    fig9.update_layout(main_config, height=150, template=template, showlegend=False)
+    
+    return fig9
+
+@app.callback(
+    Output('graph10', 'figure'),
+    Input('radio-team', 'value'),
+    Input(ThemeSwitchAIO.ids.switch('theme'), 'value')
+)
+def graph10(team,theme):
+    #team='Equipe 2'
+    template = template_theme1 if theme else template_theme2
+    
+    mask = team_filter(team)
+    df_10 = df.loc[mask]
+    
+    df10 = df_10.groupby(['Meio de Propaganda', 'Mês'], as_index=False)['Valor Pago'].sum()
+    fig10=px.line(df10, y='Valor Pago', x='Mês', color='Meio de Propaganda')
+    
+    fig10.update_layout(main_config, height=200, template=template, showlegend=False)
+    return fig10
+
+def graph11(month,team, theme):
+    template = template_theme1 if theme else template_theme2
+    
+    mask=month_filter(month)
+    df_11= df.loc[mask]
+    
+    mask= team_filter(team)
+    df_11 = df_11.loc[mask]
+    
+    fig11= go.Figure()
+    fig11.add_trace(go.Indicator
+                        (
+                            mode='number',
+                            title= {'text': f'<span style="font-size:100%">Valor Total</span><br><span style="font-size:70%"> Em Reais</span><br>'},
+                            number={'prefix': 'R$'}
+                        )
+                    )
+    
+    fig11.update_layout(main_config, height=300, template=template)
+    select = html.H1('Todas Equipes') if team == 0 else html.H1(team)
+    
+    return fig11,select
+
 
 
 # Run server
 if __name__ == '__main__':
-    app.run_server(debug=True,port=8059)
+    app.run_server(debug=False,port=8064)
